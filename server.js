@@ -1,0 +1,76 @@
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const morgan = require('morgan');
+const mongoSanitize = require('express-mongo-sanitize');
+const path = require('path');
+const { connectDB } = require('./config/db');
+const { initCloudinary, cloudinaryConfigured } = require('./config/cloudinary');
+const { errorHandler } = require('./middleware/validate');
+
+const isProd = process.env.NODE_ENV === 'production';
+
+// ---- Fail-fast checks in production (change #8: weak/missing JWT, missing Cloudinary) ----
+if (isProd) {
+  const secret = process.env.JWT_SECRET || '';
+  if (!secret || secret.length < 32 || secret.includes('change-me')) {
+    console.error('FATAL: JWT_SECRET must be set to a strong random value (min 32 chars) in production.');
+    process.exit(1);
+  }
+  if (!cloudinaryConfigured()) {
+    console.error('FATAL: Cloudinary env vars are required in production (no local-disk fallback).');
+    process.exit(1);
+  }
+}
+
+const app = express();
+
+// Behind Render (and similar proxies) Express must trust the first proxy hop
+// so req.ip — used by the login rate limiter — is the real client IP,
+// not the proxy's. trust proxy "1" trusts exactly one hop (Render's router).
+app.set('trust proxy', 1);
+
+// helmet with crossOriginResourcePolicy "cross-origin" so /uploads images load from Vite dev server (change #3)
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+);
+
+const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173').split(',').map((s) => s.trim());
+app.use(cors({ origin: allowedOrigins }));
+app.use(express.json({ limit: '2mb' }));
+app.use(mongoSanitize());
+app.use(morgan(isProd ? 'combined' : 'dev'));
+
+// Static local uploads (used only when Cloudinary is not configured, i.e. dev fallback)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+app.get('/api/health', (req, res) => res.json({ ok: true, env: process.env.NODE_ENV || 'development' }));
+
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/categories', require('./routes/categories'));
+app.use('/api/products', require('./routes/products'));
+app.use('/api/supply-lists', require('./routes/supplyLists'));
+app.use('/api/settings', require('./routes/settings'));
+app.use('/api/upload', require('./routes/upload'));
+
+app.use((req, res) => res.status(404).json({ message: 'Not found' }));
+app.use(errorHandler);
+
+const PORT = process.env.PORT || 5000;
+
+(async () => {
+  const cloud = initCloudinary();
+  if (cloud) console.log('Image storage: Cloudinary');
+  else {
+    console.warn(
+      isProd
+        ? 'Image storage: NO PROVIDER (will exit — see fail-fast check)'
+        : 'Image storage: local disk (server/uploads). Set Cloudinary env vars to use Cloudinary.'
+    );
+  }
+  await connectDB();
+  app.listen(PORT, () => console.log(`API listening on http://localhost:${PORT}`));
+})();
