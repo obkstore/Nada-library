@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* RTL-first base: Arabic font by default, Latin font when lang=en */
+html[lang='ar'] body {
+  font-family: 'Cairo', 'Nunito', system-ui, sans-serif;
+}
+html[lang='en'] body {
+  font-family: 'Nunito', 'Cairo', system-ui, sans-serif;
+}
