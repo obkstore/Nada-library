@@ -74,26 +74,32 @@ npm run dev                   # http://localhost:5173/ -> redirects to /ar
 
 ## Deployment
 
-Architecture: **Render** (API, `server/`) + **Atlas M0** (MongoDB) + **Vercel** (storefront, `client/`).
+Architecture: **Northflank** (API container, `server/`) + **Atlas M0** (MongoDB) + storefront host **TBD**.
 The API trusts one proxy hop (`app.set("trust proxy", 1)`) so the login rate limiter
-sees real client IPs behind Render. Requires **Node 20+** (`engines` in `server/package.json`).
+sees real client IPs behind the platform proxy. Requires **Node 20+** (`engines` in `server/package.json`).
 
 ### 1. Database (Atlas M0)
-- Create a free M0 cluster, a database user, and allow Render's IPs (or 0.0.0.0/0 for simplicity).
+- Create a free M0 cluster, a database user, and allow the platform's IPs (or 0.0.0.0/0 for simplicity).
 - Note the connection string: `mongodb+srv://<user>:<pass>@<cluster>/toyshop-prod`.
 
-### 2. API on Render
-- New **Web Service** from the repo, root directory `server/`, build command `npm install`,
-  start command `npm start`, health check path `/api/health`.
+### 2. API on Northflank (Dockerfile build)
+- New **service** from the repo (`main` branch), **build context `server/`**, Dockerfile build
+  (`server/Dockerfile`: `node:20-slim`, `npm ci --omit=dev`, runs as the `node` user).
+- Container port **8080**; the image sets `PORT=8080` via `ENV`, and the server listens on
+  `process.env.PORT`, so also set a `PORT=8080` env var on the service to be explicit.
+- Health check path: `/api/health` (returns `{ok:true}`).
 - Set `NODE_ENV=production` (activates fail-fast checks: strong `JWT_SECRET` required,
   Cloudinary keys required — the service refuses to boot without them).
+- `.dockerignore` keeps `node_modules`, `.env`, `uploads`, `.git`, logs, and `dist` out of the image.
+  Local `/uploads` only exists as a dev fallback: outside production the server creates the
+  folder on startup if missing; in production the static route is skipped (Cloudinary-only).
 - Environment variables (see `server/.env.example`):
 
 | Variable | Required | Notes |
 |---|---|---|
 | `MONGODB_URI` | yes | Atlas URI, e.g. `mongodb+srv://<user>:<pass>@<cluster>/toyshop-prod` |
 | `NODE_ENV` | yes | `production` |
-| `PORT` | no | Render injects its own; code defaults to `5000` |
+| `PORT` | yes | `8080` (matches the Dockerfile `EXPOSE`) |
 | `JWT_SECRET` | yes | Random string, **min 32 chars** (boot fails otherwise) |
 | `JWT_EXPIRES_IN` | no | Default `8h` |
 | `CLIENT_URL` | yes | Prod storefront origin(s), comma-separated, e.g. `https://shop.example.com` (CORS) |
@@ -103,22 +109,22 @@ sees real client IPs behind Render. Requires **Node 20+** (`engines` in `server/
 | `ADMIN_USERNAME` | bootstrap only | Initial admin for the base seed |
 | `ADMIN_PASSWORD` | bootstrap only | Initial admin password for the base seed |
 
-- **Bootstrap once** via the Render shell (prints the database it will modify, requires `--force`):
+- **Bootstrap once** via the service shell/terminal (prints the database it will modify, requires `--force`):
   `npm run seed -- --base-only --force` → creates admin (from env), 5 categories, SYP store settings.
   Full sample fixtures are **always refused** in production, even with `--force`.
 
-### 3. Storefront on Vercel
-- New project from the repo, root directory `client/`, framework preset **Vite**.
-- `client/vercel.json` rewrites every path to `/index.html`, so refresh on `/ar/products`
-  (or any deep link) serves the SPA instead of 404.
+### 3. Storefront (host TBD)
+- The frontend host is **still to be decided**. Whichever static host is chosen, it must rewrite
+  every path to `/index.html` (see `client/vercel.json` for the Vercel form of this rule), so
+  refresh on `/ar/products` (or any deep link) serves the SPA instead of 404.
 - Environment variables (see `client/.env.example`):
 
 | Variable | Required | Notes |
 |---|---|---|
-| `VITE_API_URL` | yes | Public API base, e.g. `https://toyshop-api.onrender.com/api` |
+| `VITE_API_URL` | yes | Public API base, e.g. `https://<api-host>/api` |
 | `VITE_SITE_URL` | yes | Public storefront origin, e.g. `https://shop.example.com` (absolute links in WhatsApp messages) |
 
-- After deploy, set the API's `CLIENT_URL` to the Vercel domain and redeploy the API.
+- After deploy, set the API's `CLIENT_URL` to the storefront domain and redeploy the API.
 
 ### 4. Post-deploy checklist
 - `GET https://<api>/api/health` → `{ok:true}`.

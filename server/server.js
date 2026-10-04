@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const mongoSanitize = require('express-mongo-sanitize');
 const path = require('path');
+const fs = require('fs');
 const { connectDB } = require('./config/db');
 const { initCloudinary, cloudinaryConfigured } = require('./config/cloudinary');
 const { errorHandler } = require('./middleware/validate');
@@ -44,8 +45,15 @@ app.use(express.json({ limit: '2mb' }));
 app.use(mongoSanitize());
 app.use(morgan(isProd ? 'combined' : 'dev'));
 
-// Static local uploads (used only when Cloudinary is not configured, i.e. dev fallback)
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Local /uploads exists only as a dev fallback (production is Cloudinary-only
+// via the fail-fast check above). Ensure the dir exists outside production so
+// the static route — and any local write — never crashes on a missing folder;
+// skip it entirely in production.
+if (!isProd) {
+  const uploadDir = path.join(__dirname, 'uploads');
+  if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+  app.use('/uploads', express.static(uploadDir));
+}
 
 app.get('/api/health', (req, res) => res.json({ ok: true, env: process.env.NODE_ENV || 'development' }));
 
