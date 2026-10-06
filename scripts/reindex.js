@@ -1,4 +1,6 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+// Network/DNS policy + redacted connection logging.
+const { CONNECT_OPTS, getMongoUri, redactUri, uriHost } = require('../config/network');
 const mongoose = require('mongoose');
 const Product = require('../models/Product');
 const { normalizeArabic } = require('../utils/arabicNormalize');
@@ -10,9 +12,10 @@ const { normalizeArabic } = require('../utils/arabicNormalize');
 // Usage: npm run reindex
 // Safe to run in any env (touches only derived fields, never drops data).
 async function main() {
-  const uri = process.env.MONGODB_URI;
-  if (!uri) throw new Error('MONGODB_URI missing');
-  await mongoose.connect(uri);
+  const uri = getMongoUri();
+  console.log(`Reindex: connecting to ${redactUri(uri)} (IPv4, 10s timeout)…`);
+  await mongoose.connect(uri, CONNECT_OPTS);
+  console.log(`Reindex: connected (${uriHost(uri)}).`);
   const products = await Product.find();
   let updated = 0;
   for (const p of products) {

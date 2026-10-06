@@ -10,6 +10,8 @@
 // RE-RUN SAFETY: upserts use $setOnInsert, so manual admin edits are never
 // overwritten. Already-existing docs are counted as "skipped".
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+// Network/DNS policy + connection diagnostics (must load before Mongoose connects).
+const { CONNECT_OPTS, getMongoUri, redactUri, uriHost, classifyDbError, hintForCause } = require('../config/network');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const { normalizeArabic } = require('../utils/arabicNormalize');
@@ -24,8 +26,7 @@ async function main() {
   const BASE_ONLY = process.argv.includes('--base-only');
   const FORCE = process.argv.includes('--force');
   const isProd = process.env.NODE_ENV === 'production';
-  const uri = process.env.MONGODB_URI;
-  if (!uri) throw new Error('MONGODB_URI missing');
+  const uri = getMongoUri();
   const dbName = dbNameFromUri(uri) || '(none)';
 
   if (isProd) {
@@ -52,7 +53,20 @@ async function main() {
   const SupplyList = require('../models/SupplyList');
   const StoreSettings = require('../models/StoreSettings');
 
-  await mongoose.connect(uri);
+  // Staged, diagnosed connect: host resolution → attempt (redacted) → result.
+  // Credentials NEVER appear in logs (redactUri masks the password).
+  const host = uriHost(uri);
+  console.log(`Seed: resolving ${host}…`);
+  console.log(`Seed: connecting to ${redactUri(uri)} (IPv4, 10s timeout)…`);
+  try {
+    await mongoose.connect(uri, CONNECT_OPTS);
+  } catch (err) {
+    const cause = classifyDbError(err);
+    console.error(`Seed: connection FAILED (host: ${host}, cause: ${cause}).`);
+    console.error(`Seed: exact error: ${err && err.message ? err.message : err}`);
+    console.error(`Seed: ${hintForCause(cause, host)}`);
+    process.exit(1);
+  }
   console.log(`Connected (seed target database: "${dbName}").`);
 
   // --- Admin from env (dev defaults only outside production) ---

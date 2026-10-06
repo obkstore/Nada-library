@@ -1,4 +1,6 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+// Network/DNS policy + redacted connection logging.
+const { CONNECT_OPTS, getMongoUri, redactUri, uriHost } = require('../config/network');
 const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
@@ -14,9 +16,10 @@ const APPLY = process.argv.includes('--delete');
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 async function main() {
-  const uri = process.env.MONGODB_URI;
-  if (!uri) throw new Error('MONGODB_URI missing');
-  await mongoose.connect(uri);
+  const uri = getMongoUri();
+  console.log(`Cleanup: connecting to ${redactUri(uri)} (IPv4, 10s timeout)…`);
+  await mongoose.connect(uri, CONNECT_OPTS);
+  console.log(`Cleanup: connected (${uriHost(uri)}).`);
 
   const Product = require('../models/Product');
   const Category = require('../models/Category');
