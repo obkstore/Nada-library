@@ -1,4 +1,6 @@
 require('dotenv').config();
+// Network/DNS policy before anything resolves the Atlas hostname.
+require('./config/network');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');

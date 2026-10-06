@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { CONNECT_OPTS, getMongoUri, redactUri, uriHost, classifyDbError, hintForCause } = require('./network');
 
 // Live connection state for /api/health (browser-visible DB status).
 // Updated by connectDB() results and by mongoose connection events
@@ -18,9 +19,20 @@ function getDbStatus() {
 }
 
 async function connectDB() {
-  const uri = process.env.MONGODB_URI;
-  if (!uri) throw new Error('MONGODB_URI is missing. Copy .env.example to .env and set it.');
-  await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
+  const uri = getMongoUri();
+  const host = uriHost(uri);
+  console.log(`DB: resolving ${host}…`);
+  console.log(`DB: connecting to ${redactUri(uri)} (IPv4, 10s timeout)…`);
+  try {
+    await mongoose.connect(uri, CONNECT_OPTS);
+  } catch (err) {
+    const cause = classifyDbError(err);
+    console.error(`DB: connection FAILED (host: ${host}, cause: ${cause}).`);
+    console.error(`DB: exact error: ${err && err.message ? err.message : err}`);
+    console.error(`DB: ${hintForCause(cause, host)}`);
+    markDisconnected(err);
+    throw err; // server.js retry loop decides what happens next
+  }
   dbState.status = 'connected';
   dbState.error = null;
   console.log('MongoDB connected');
