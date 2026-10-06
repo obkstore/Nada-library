@@ -6,7 +6,8 @@ const morgan = require('morgan');
 const mongoSanitize = require('express-mongo-sanitize');
 const path = require('path');
 const fs = require('fs');
-const { connectDB } = require('./config/db');
+const mongoose = require('mongoose');
+const { connectDB, getDbStatus, shortMessage, markDisconnected, watchConnection } = require('./config/db');
 const { initCloudinary, cloudinaryConfigured } = require('./config/cloudinary');
 const { errorHandler } = require('./middleware/validate');
 
@@ -55,7 +56,11 @@ if (!isProd) {
   app.use('/uploads', express.static(uploadDir));
 }
 
-app.get('/api/health', (req, res) => res.json({ ok: true, env: process.env.NODE_ENV || 'development' }));
+// Browser-visible liveness + database status (dbError is a short message or null).
+app.get('/api/health', (req, res) => {
+  const db = getDbStatus();
+  return res.json({ ok: true, db: db.status, dbError: db.error, env: process.env.NODE_ENV || 'development' });
+});
 
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/categories', require('./routes/categories'));
@@ -69,16 +74,45 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
-(async () => {
-  const cloud = initCloudinary();
-  if (cloud) console.log('Image storage: Cloudinary');
-  else {
-    console.warn(
-      isProd
-        ? 'Image storage: NO PROVIDER (will exit — see fail-fast check)'
-        : 'Image storage: local disk (server/uploads). Set Cloudinary env vars to use Cloudinary.'
-    );
+// Resilient startup: listen FIRST so the platform health check and the API
+// stay up, then connect to MongoDB in the background. A failed connection
+// logs the FULL error once, records a short message for /api/health, and
+// retries every 10 seconds instead of crashing the process.
+let dbFirstFailureLogged = false;
+
+async function ensureDbConnection() {
+  if (mongoose.connection.readyState === 1) return; // already connected
+  try {
+    await connectDB();
+    dbFirstFailureLogged = false; // a future outage logs in full once again
+  } catch (err) {
+    markDisconnected(err);
+    if (!dbFirstFailureLogged) {
+      console.error('MongoDB connection failed: ' + (err && err.message ? err.message : err));
+      dbFirstFailureLogged = true;
+    } else {
+      console.error('MongoDB retry failed: ' + shortMessage(err));
+    }
   }
-  await connectDB();
-  app.listen(PORT, () => console.log(`API listening on http://localhost:${PORT}`));
-})();
+}
+
+watchConnection();
+
+const cloud = initCloudinary();
+if (cloud) console.log('Image storage: Cloudinary');
+else {
+  console.warn(
+    isProd
+      ? 'Image storage: NO PROVIDER (will exit — see fail-fast check)'
+      : 'Image storage: local disk (server/uploads). Set Cloudinary env vars to use Cloudinary.'
+  );
+}
+
+app.listen(PORT, () => {
+  console.log(`API listening on http://localhost:${PORT}`);
+  void ensureDbConnection(); // background: never blocks listening
+});
+
+setInterval(() => {
+  void ensureDbConnection();
+}, 10000);
