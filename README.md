@@ -69,7 +69,7 @@ npm run dev                   # http://localhost:5173/ -> redirects to /ar
 
 ## Verification (done before handoff)
 - `npm install` passes in `server/` and `client/`.
-- `GET /api/health` → `{ok:true}` (requires Mongo running).
+- `GET /api/health` → `{ok:true, db:"connected"|"disconnected", dbError:<short message or null>}` (works even when Mongo is down — the server listens first and retries the DB every 10s).
 - Client `/` → `/ar` (RTL), switcher → `/en` (LTR), reload persists via URL; direct `/en/products?sort=price-asc` works (shareable query params in Phase 4 listing).
 
 ## Deployment
@@ -87,7 +87,7 @@ sees real client IPs behind the platform proxy. Requires **Node 20+** (`engines`
   (`server/Dockerfile`: `node:20-slim`, `npm ci --omit=dev`, runs as the `node` user).
 - Container port **8080**; the image sets `PORT=8080` via `ENV`, and the server listens on
   `process.env.PORT`, so also set a `PORT=8080` env var on the service to be explicit.
-- Health check path: `/api/health` (returns `{ok:true}`).
+- Health check path: `/api/health` (returns `{ok:true, db, dbError}`; stays 200 while the DB reconnects).
 - Set `NODE_ENV=production` (activates fail-fast checks: strong `JWT_SECRET` required,
   Cloudinary keys required — the service refuses to boot without them).
 - `.dockerignore` keeps `node_modules`, `.env`, `uploads`, `.git`, logs, and `dist` out of the image.
@@ -127,7 +127,7 @@ sees real client IPs behind the platform proxy. Requires **Node 20+** (`engines`
 - After deploy, set the API's `CLIENT_URL` to the storefront domain and redeploy the API.
 
 ### 4. Post-deploy checklist
-- `GET https://<api>/api/health` → `{ok:true}`.
+- `GET https://<api>/api/health` → `{ok:true, db:"connected", dbError:null}` (if `db:"disconnected"`, read `dbError` — the server keeps retrying every 10s).
 - Open `https://<shop>/` → redirects to `/ar` (RTL); switcher → `/en` (LTR).
 - Log in at `/ar/admin` with the bootstrap admin, change the password immediately
   (admin settings → change password), then remove/rotate `ADMIN_PASSWORD`.
