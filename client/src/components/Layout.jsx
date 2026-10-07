@@ -1,6 +1,7 @@
 import { Link, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useShopName } from '../hooks/useStoreSettings';
+import { developer } from '../config/developer';
 
 // Header with AR/EN switcher + RTL-aware layout (logical ms-/me-/ps-/pe- utilities only).
 // The URL prefix is the source of truth; localStorage is updated as a side effect
@@ -10,6 +11,8 @@ import { useShopName } from '../hooks/useStoreSettings';
 export default function Layout() {
   const { t, i18n } = useTranslation();
   const shopName = useShopName();
+  const devName = lang === 'en' ? developer.name.en : developer.name.ar;
+  const hasLink = developer.url && developer.url !== 'no link';
   const { lang } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -72,6 +75,17 @@ export default function Layout() {
           {/* Mirrored arrow: points forward in both directions */}
           <span className="rtl:rotate-180 inline-block">→</span>
         </div>
+        {/* Developer credit: subtle, centered, wraps gracefully on narrow screens */}
+        <p className="px-4 pb-3 text-center text-xs text-stone-400">
+          {t('common.developedBy')}{' '}
+          {hasLink ? (
+            <a href={developer.url} target="_blank" rel="noopener noreferrer" className="font-bold hover:underline">
+              {devName}
+            </a>
+          ) : (
+            <span className="font-bold">{devName}</span>
+          )}
+        </p>
       </footer>
     </div>
   );
