@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import api from '../../api/client';
 import ProductImage from '../../components/ProductImage';
 import NotFound from './NotFound';
-import { pickLang, useStoreSettings } from '../../hooks/useStoreSettings';
+import { pickLang, useShopName, useStoreSettings } from '../../hooks/useStoreSettings';
 import { formatPrice } from '../../utils/formatPrice';
 import { discountPct, effectivePrice, hasSale, showPctBadge } from '../../utils/prices';
 import { cleanWhatsapp, productPageUrl, waProductLink } from '../../utils/whatsapp';
@@ -19,6 +19,7 @@ export default function ProductDetail() {
   const { lang, slug } = useParams();
   const cur = i18n.language === 'en' ? 'en' : 'ar';
   const settings = useStoreSettings();
+  const shopName = useShopName();
   const [product, setProduct] = useState(null);
   const [missing, setMissing] = useState(false);
   const [active, setActive] = useState(0);
@@ -65,7 +66,7 @@ export default function ProductDetail() {
   return (
     <>
       <Helmet>
-        <title>{`${name} | ${t('brand')}`}</title>
+        <title>{`${name} | ${shopName}`}</title>
         <meta name="description" content={desc.slice(0, 160)} />
         <link rel="canonical" href={pageUrl} />
         <link rel="alternate" hrefLang="ar" href={productPageUrl(product.slug, 'ar')} />

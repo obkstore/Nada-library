@@ -7,6 +7,7 @@ import ListingView from '../../components/ListingView';
 import NotFound from './NotFound';
 import { useProductListing } from '../../hooks/useProductListing';
 import { pickNameFn, useCategories } from '../../hooks/useCategories';
+import { useShopName } from '../../hooks/useStoreSettings';
 import { siteUrl } from '../../utils/whatsapp';
 
 // Thin page over the shared listing engine: fixedCategory hides the category
@@ -15,6 +16,7 @@ export default function CategoryPage() {
   const { t } = useTranslation();
   const { lang, slug } = useParams();
   const categories = useCategories();
+  const shopName = useShopName();
   const listing = useProductListing({ fixedCategory: slug });
   const pickName = pickNameFn(lang);
   const site = siteUrl();
@@ -42,7 +44,7 @@ export default function CategoryPage() {
   return (
     <>
       <Helmet>
-        <title>{`${name} | ${t('brand')}`}</title>
+        <title>{`${name} | ${shopName}`}</title>
         <meta name="description" content={`${name} — ${t('seo.homeDesc')}`} />
         <link rel="canonical" href={canonical} />
         <link rel="alternate" hrefLang="ar" href={`${site}/ar/category/${slug}`} />

@@ -1,5 +1,5 @@
 {
-  "brand": "Stationery & Toys Library",
+  "brand": "Nada library",
   "nav": {
     "home": "Home",
     "products": "Products",
@@ -26,7 +26,7 @@
     "phaseTodo": "This page will be built in later phases."
   },
   "seo": {
-    "homeTitle": "Stationery & Toys Library | Home",
+    "homeTitle": "Nada library | Home",
     "homeDesc": "Stationery, toys, books and school supplies."
   },
   "public": {

@@ -3,7 +3,7 @@ import { Helmet } from 'react-helmet-async';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api from '../../api/client';
-import { pickLang, useStoreSettings } from '../../hooks/useStoreSettings';
+import { pickLang, useShopName, useStoreSettings } from '../../hooks/useStoreSettings';
 import { formatPrice } from '../../utils/formatPrice';
 import { siteUrl } from '../../utils/whatsapp';
 
@@ -13,6 +13,7 @@ export default function SupplyLists() {
   const { lang } = useParams();
   const cur = i18n.language === 'en' ? 'en' : 'ar';
   const settings = useStoreSettings();
+  const shopName = useShopName();
   const [lists, setLists] = useState(null);
   const site = siteUrl();
 
@@ -30,7 +31,7 @@ export default function SupplyLists() {
   return (
     <>
       <Helmet>
-        <title>{`${t('public.seoLists')} | ${t('brand')}`}</title>
+        <title>{`${t('public.seoLists')} | ${shopName}`}</title>
         <meta name="description" content={t('seo.homeDesc')} />
         <link rel="canonical" href={`${site}/${lang}/supply-lists`} />
         <link rel="alternate" hrefLang="ar" href={`${site}/ar/supply-lists`} />

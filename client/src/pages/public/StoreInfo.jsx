@@ -1,7 +1,7 @@
 import { Helmet } from 'react-helmet-async';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { pickLang, useStoreSettings } from '../../hooks/useStoreSettings';
+import { pickLang, useShopName, useStoreSettings } from '../../hooks/useStoreSettings';
 import { cleanWhatsapp } from '../../utils/whatsapp';
 import { siteUrl } from '../../utils/whatsapp';
 
@@ -11,6 +11,7 @@ export default function StoreInfo() {
   const { lang } = useParams();
   const cur = i18n.language === 'en' ? 'en' : 'ar';
   const s = useStoreSettings();
+  const shopName = useShopName();
   const site = siteUrl();
   const wa = cleanWhatsapp(s?.whatsappNumber);
 
@@ -31,7 +32,7 @@ export default function StoreInfo() {
   return (
     <>
       <Helmet>
-        <title>{`${t('public.seoStore')} | ${t('brand')}`}</title>
+        <title>{`${t('public.seoStore')} | ${shopName}`}</title>
         <meta name="description" content={t('seo.homeDesc')} />
         <link rel="canonical" href={`${site}/${lang}/store`} />
         <link rel="alternate" hrefLang="ar" href={`${site}/ar/store`} />

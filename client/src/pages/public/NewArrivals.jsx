@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 import ListingView from '../../components/ListingView';
 import { useProductListing } from '../../hooks/useProductListing';
 import { pickNameFn, useCategories } from '../../hooks/useCategories';
+import { useShopName } from '../../hooks/useStoreSettings';
 import { siteUrl } from '../../utils/whatsapp';
 
 // New Arrivals: same engine with isNewArrival (+ recent products server-side).
@@ -11,6 +12,7 @@ export default function NewArrivals() {
   const { t } = useTranslation();
   const { lang } = useParams();
   const categories = useCategories();
+  const shopName = useShopName();
   const listing = useProductListing({ newOnly: true });
   const pickName = pickNameFn(lang);
   const site = siteUrl();
@@ -18,7 +20,7 @@ export default function NewArrivals() {
   return (
     <>
       <Helmet>
-        <title>{`${t('public.seoNew')} | ${t('brand')}`}</title>
+        <title>{`${t('public.seoNew')} | ${shopName}`}</title>
         <meta name="description" content={t('seo.homeDesc')} />
         <link rel="canonical" href={`${site}/${lang}/new`} />
         <link rel="alternate" hrefLang="ar" href={`${site}/ar/new`} />

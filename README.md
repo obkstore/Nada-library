@@ -1,4 +1,4 @@
-# Stationery & Toys Library Shop (bilingual AR-first)
+# Nada Library Shop (مكتبة الندى, bilingual AR-first)
 
 Full-stack bilingual (Arabic primary, English secondary) shop. **Phases 0–4 are done.**
 

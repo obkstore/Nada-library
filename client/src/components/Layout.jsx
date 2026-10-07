@@ -1,11 +1,15 @@
 import { Link, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useShopName } from '../hooks/useStoreSettings';
 
 // Header with AR/EN switcher + RTL-aware layout (logical ms-/me-/ps-/pe- utilities only).
 // The URL prefix is the source of truth; localStorage is updated as a side effect
 // so "/" can redirect to the saved language later.
+// Shop name comes from StoreSettings (useShopName: settings value, static locale
+// fallback while loading). No tagline: StoreSettings has no tagline field.
 export default function Layout() {
   const { t, i18n } = useTranslation();
+  const shopName = useShopName();
   const { lang } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -26,7 +30,7 @@ export default function Layout() {
       <header className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <Link to={L('/')} className="font-extrabold text-lg text-brand-600">
-            {t('brand')}
+            {shopName}
           </Link>
           <nav className="hidden md:flex items-center gap-4 text-sm font-semibold">
             <Link to={L('/')} className="hover:text-brand-600">{t('nav.home')}</Link>
@@ -64,7 +68,7 @@ export default function Layout() {
       </main>
       <footer className="bg-white border-t border-stone-100">
         <div className="max-w-6xl mx-auto px-4 py-4 text-sm text-stone-500 flex items-center justify-between">
-          <span>{t('brand')}</span>
+          <span>{shopName}</span>
           {/* Mirrored arrow: points forward in both directions */}
           <span className="rtl:rotate-180 inline-block">→</span>
         </div>

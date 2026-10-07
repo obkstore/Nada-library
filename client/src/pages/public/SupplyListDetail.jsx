@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import api from '../../api/client';
 import ProductImage from '../../components/ProductImage';
 import NotFound from './NotFound';
-import { pickLang, useStoreSettings } from '../../hooks/useStoreSettings';
+import { pickLang, useShopName, useStoreSettings } from '../../hooks/useStoreSettings';
 import { formatPrice } from '../../utils/formatPrice';
 import { effectivePrice } from '../../utils/prices';
 import { cleanWhatsapp, supplyListPageUrl, waSupplyListLink } from '../../utils/whatsapp';
@@ -17,6 +17,7 @@ export default function SupplyListDetail() {
   const { lang, id } = useParams();
   const cur = i18n.language === 'en' ? 'en' : 'ar';
   const settings = useStoreSettings();
+  const shopName = useShopName();
   const [list, setList] = useState(null);
   const [missing, setMissing] = useState(false);
 
@@ -52,7 +53,7 @@ export default function SupplyListDetail() {
   return (
     <>
       <Helmet>
-        <title>{`${title} | ${t('brand')}`}</title>
+        <title>{`${title} | ${shopName}`}</title>
         <meta name="description" content={`${title} — ${t('seo.homeDesc')}`} />
         <link rel="canonical" href={pageUrl} />
       </Helmet>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import api from '../api/client';
 
 let cached = null;
@@ -39,4 +40,14 @@ export function useStoreSettings() {
   }, []);
 
   return settings;
+}
+
+// Shop display name: StoreSettings.storeName in the current language (EN falls
+// back to AR), with the static locale `brand` fallback while settings load.
+// Never flashes a stale name — the fallback IS the current shop name.
+export function useShopName() {
+  const { t, i18n } = useTranslation();
+  const settings = useStoreSettings();
+  const cur = i18n.language === 'en' ? 'en' : 'ar';
+  return pickLang(settings?.storeName, cur) || t('brand');
 }
