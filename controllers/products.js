@@ -111,16 +111,42 @@ async function getBySlugOrId(req, res, next) {
   }
 }
 
-// Offer rule (change: offers): salePrice must be > 0 and < price, checked
-// against MERGED values (request body + stored doc) so partial PUTs that
-// lower the price below the sale price are rejected with a clear 400.
+// Offer rule: when a sale price is PROVIDED it must be > 0 and < price,
+// checked against MERGED values (request body + stored doc) so partial PUTs
+// that lower the price below the stored sale price are rejected with one
+// clear 400 message. Absent (undefined/null/"") means "no offer".
 function checkSaleRule(price, salePrice) {
-  if (salePrice == null || salePrice === '') return null; // no offer — always fine
+  if (salePrice === undefined || salePrice === null) return null;
+  if (typeof salePrice === 'string' && salePrice.trim() === '') return null;
   const s = Number(salePrice);
   const p = Number(price);
-  if (!Number.isFinite(s) || s <= 0) return 'salePrice must be greater than 0';
-  if (!Number.isFinite(p) || s >= p) return 'salePrice must be less than price';
+  if (!Number.isFinite(s) || s <= 0 || !Number.isFinite(p) || s >= p) {
+    return 'salePrice must be greater than 0 and less than price';
+  }
   return null;
+}
+
+// True when the client explicitly clears an optional field (unset intent).
+// Anything else absent (undefined) simply means "not provided".
+function isClearIntent(v) {
+  return v === null || (typeof v === 'string' && v.trim() === '');
+}
+
+// Partial nested updates must MERGE, not replace: Object.assign(product,
+// { name: { en } }) would wipe the stored Arabic name and trip required
+// validation. Known bilingual sub-objects merge ar/en explicitly.
+function mergeBilingual(doc, body, keys) {
+  for (const k of keys) {
+    const incoming = body[k];
+    if (incoming && typeof incoming === 'object' && !Array.isArray(incoming)) {
+      const current = doc[k] || {};
+      body[k] = {
+        ar: current.ar !== undefined ? current.ar : '',
+        en: current.en !== undefined ? current.en : '',
+        ...incoming,
+      };
+    }
+  }
 }
 
 async function create(req, res, next) {
@@ -146,13 +172,41 @@ async function update(req, res, next) {
       for (const url of before) if (!after.has(url)) removedImages.push(url);
     }
     delete req.body.slug; // silently ignored — slug is immutable after creation
-    // Merged offer validation BEFORE save (change 2: offers).
+    // Partial bilingual objects merge (never replace stored ar/en).
+    mergeBilingual(product, req.body, ['name', 'description']);
+    // Explicit null/"" on salePrice/ageMin/ageMax UNSETS the field: the
+    // offer/age is removed, and 0, NaN, or "" are never stored.
+    const unsetFields = [];
+    for (const f of ['salePrice', 'ageMin', 'ageMax']) {
+      if (isClearIntent(req.body[f])) {
+        unsetFields.push(f);
+        delete req.body[f];
+      }
+    }
+    // Merged offer validation BEFORE save: explicit body value wins, otherwise
+    // the stored value — unless this request just unset it.
+    let mergedSale;
+    if (req.body.salePrice !== undefined) mergedSale = req.body.salePrice;
+    else if (!unsetFields.includes('salePrice')) mergedSale = product.salePrice;
     const mergedPrice = req.body.price !== undefined ? req.body.price : product.price;
-    const mergedSale = req.body.salePrice !== undefined ? req.body.salePrice : product.salePrice;
     const errMsg = checkSaleRule(mergedPrice, mergedSale);
     if (errMsg) return res.status(400).json({ message: errMsg });
     Object.assign(product, req.body);
-    await product.save(); // triggers searchIndex + slug-uniqueness hooks
+    // Clear on the doc too, so the pre-save hook recomputes effectivePrice
+    // from the post-unset state; the atomic $unset below guarantees absence
+    // (Mongoose documents expose no $unset method, hence the two-step write).
+    for (const f of unsetFields) product.set(f, undefined);
+    await product.save(); // recomputes searchIndex + effectivePrice via hooks
+    if (unsetFields.length > 0) {
+      await Product.updateOne(
+        { _id: product._id },
+        { $unset: Object.fromEntries(unsetFields.map((f) => [f, 1])) }
+      );
+      // Re-read so the response reflects the unset fields (not stale values).
+      const fresh = await Product.findById(product._id).populate('category', 'name slug').lean();
+      for (const url of removedImages) await deleteStored(url);
+      return res.json(fresh);
+    }
     // Removed files are deleted only AFTER the save succeeds.
     for (const url of removedImages) await deleteStored(url);
     return res.json(product);

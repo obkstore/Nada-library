@@ -13,14 +13,16 @@ function linePrice(product) {
 // stale bundles (bundlePrice >= regularTotal) come back as offerValid=false
 // with bundlePrice nulled, so the UI can never show a fake discount.
 async function attachTotals(lists) {
-  const ids = [...new Set(lists.flatMap((l) => (l.items || []).map((it) => String(it.product))))];
+  // Accepts ObjectIds AND already-populated product objects (update path).
+  const idOf = (p) => String((p && p._id) || p);
+  const ids = [...new Set(lists.flatMap((l) => (l.items || []).map((it) => idOf(it.product))))];
   const prods = await Product.find({ _id: { $in: ids } })
     .select('_id name price salePrice images slug stockStatus')
     .lean();
   const byId = Object.fromEntries(prods.map((p) => [String(p._id), p]));
   return lists.map((l) => {
     const items = (l.items || [])
-      .map((it) => ({ ...it, product: byId[String(it.product)] || null }))
+      .map((it) => ({ ...it, product: byId[idOf(it.product)] || null }))
       .filter((it) => it.product); // skip deleted products (change 6)
     const regularTotal = items.reduce((s, it) => s + linePrice(it.product) * (it.qty || 0), 0);
     const hasBundle = l.bundlePrice != null && Number(l.bundlePrice) > 0;
@@ -91,13 +93,35 @@ async function update(req, res, next) {
   try {
     const doc = await SupplyList.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: 'Supply list not found' });
-    // Merged check: items may come from the body or the stored doc.
+    // Partial bilingual objects merge (never replace stored ar/en).
+    for (const k of ['title', 'school', 'grade']) {
+      const incoming = req.body[k];
+      if (incoming && typeof incoming === 'object' && !Array.isArray(incoming)) {
+        const current = doc[k] || {};
+        req.body[k] = {
+          ar: current.ar !== undefined ? current.ar : '',
+          en: current.en !== undefined ? current.en : '',
+          ...incoming,
+        };
+      }
+    }
+    // Explicit null/"" on bundlePrice UNSETS the offer (never stores 0/NaN/"").
+    const unsetBundle = req.body.bundlePrice === null || (typeof req.body.bundlePrice === 'string' && req.body.bundlePrice.trim() === '');
+    if (unsetBundle) delete req.body.bundlePrice;
+    // Merged check: items/bundle may come from the body or the stored doc
+    // (an unset bundle counts as absent, never as a value).
     const mergedItems = req.body.items !== undefined ? req.body.items : doc.items;
-    const mergedBundle = req.body.bundlePrice !== undefined ? req.body.bundlePrice : doc.bundlePrice;
+    const mergedBundle = req.body.bundlePrice !== undefined ? req.body.bundlePrice : (unsetBundle ? undefined : doc.bundlePrice);
     const errMsg = await checkBundle(mergedItems, mergedBundle);
     if (errMsg) return res.status(400).json({ message: errMsg });
     Object.assign(doc, req.body);
     await doc.save();
+    if (unsetBundle) {
+      await SupplyList.updateOne({ _id: doc._id }, { $unset: { bundlePrice: 1 } });
+      const fresh = await SupplyList.findById(doc._id).populate('items.product', 'name price salePrice images slug stockStatus').lean();
+      const [withTotal] = await attachTotals([fresh]);
+      return res.json(withTotal);
+    }
     return res.json(doc);
   } catch (err) {
     return next(err);

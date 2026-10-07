@@ -27,6 +27,15 @@ function getMongoUri() {
       'MONGODB_URI is missing. Copy server/.env.example to server/.env and set MONGODB_URI (dotenv runs before this check).'
     );
   }
+  // Catch the classic paste error: MONGODB_URI=MONGODB_URI=mongodb+srv://...
+  // (dotenv splits on the FIRST '=', so the value keeps the extra prefix and
+  // the driver rejects it with "Invalid scheme"). Fail loudly, not cryptically.
+  if (/^[\w.-]+=mongodb/i.test(uri)) {
+    throw new Error(
+      'MONGODB_URI looks malformed: it starts with a variable-name prefix. ' +
+        'Edit server/.env so the line reads MONGODB_URI=mongodb+srv://... (single prefix).'
+    );
+  }
   return uri;
 }
 
