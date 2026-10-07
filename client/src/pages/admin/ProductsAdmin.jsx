@@ -14,9 +14,24 @@ const PAGE_SIZE = 12;
 function emptyForm() {
   return {
     nameAr: '', nameEn: '', descAr: '', descEn: '',
-    price: '', salePrice: '', category: '', stockStatus: 'in', stockQty: 0,
+    price: '', salePrice: '', category: '', stockStatus: 'in', stockQty: '',
     ageMin: '', ageMax: '', isNewArrival: false, images: [],
   };
+}
+
+// Optional-number packing for save: empty input + was-empty → OMIT the key;
+// empty input + had a value → explicit null (server $unsets, never stores
+// 0/NaN/""); non-empty → Number() (caller rejects non-numeric first).
+// allowNull=false (stockQty) → empty always omits, never nulls.
+function packOpt(cur, init, allowNull = true) {
+  const s = String(cur ?? '').trim();
+  if (s === '') {
+    const had = init !== '' && init !== null && init !== undefined;
+    return had && allowNull ? { send: true, value: null } : { send: false };
+  }
+  const n = Number(s);
+  if (!Number.isFinite(n)) return { send: true, value: NaN };
+  return { send: true, value: n };
 }
 
 export default function ProductsAdmin() {
@@ -33,6 +48,9 @@ export default function ProductsAdmin() {
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(null); // null=list, {}=new, product=edit
   const [form, setForm] = useState(emptyForm());
+  // Snapshot of optional numbers as loaded ('' when empty) — drives
+  // omit-vs-null on save. Never derive from live form state.
+  const [initial, setInitial] = useState({ salePrice: '', ageMin: '', ageMax: '', stockQty: '' });
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -71,19 +89,27 @@ export default function ProductsAdmin() {
 
   const openNew = () => {
     setForm(emptyForm());
+    setInitial({ salePrice: '', ageMin: '', ageMax: '', stockQty: '' });
     setNotice('');
+    setSaleErr('');
     setEditing({});
   };
   const openEdit = (p) => {
     setForm({
       nameAr: p.name?.ar || '', nameEn: p.name?.en || '',
       descAr: p.description?.ar || '', descEn: p.description?.en || '',
+      // Empty optional fields load as '' in the inputs, never as 0.
       price: p.price ?? '', salePrice: p.salePrice ?? '', category: p.category?._id || p.category || '',
-      stockStatus: p.stockStatus || 'in', stockQty: p.stockQty ?? 0,
+      stockStatus: p.stockStatus || 'in', stockQty: p.stockQty ?? '',
       ageMin: p.ageMin ?? '', ageMax: p.ageMax ?? '',
       isNewArrival: !!p.isNewArrival, images: p.images || [],
     });
+    setInitial({
+      salePrice: p.salePrice ?? '', ageMin: p.ageMin ?? '',
+      ageMax: p.ageMax ?? '', stockQty: p.stockQty ?? '',
+    });
     setNotice('');
+    setSaleErr('');
     setEditing(p);
   };
 
@@ -91,11 +117,21 @@ export default function ProductsAdmin() {
 
   const save = async (e) => {
     e.preventDefault();
-    // Offer rule mirror (server re-checks with merged values): empty clears,
-    // otherwise 0 < sale < price.
-    const raw = String(form.salePrice ?? '').trim();
-    const sNum = raw === '' ? null : Number(raw);
-    if (sNum != null && !(sNum > 0 && sNum < Number(form.price))) {
+    // Pack optional numbers: omit empty+unchanged, null on deliberate clear,
+    // Number() only on non-empty input — NaN/"" are never sent.
+    const sale = packOpt(form.salePrice, initial.salePrice, true);
+    const ageMin = packOpt(form.ageMin, initial.ageMin, true);
+    const ageMax = packOpt(form.ageMax, initial.ageMax, true);
+    const qty = packOpt(form.stockQty, initial.stockQty, false);
+    for (const [packed, label] of [[sale, 'salePrice'], [ageMin, 'ageMin'], [ageMax, 'ageMax'], [qty, 'stockQty']]) {
+      if (packed.send && !Number.isFinite(packed.value) && packed.value !== null) {
+        setError(`${label}: must be a number`);
+        return;
+      }
+    }
+    // Offer rule mirror (server re-checks with merged values): 0 < sale < price.
+    const effSale = sale.send ? sale.value : null;
+    if (effSale != null && !(effSale > 0 && effSale < Number(form.price))) {
       setSaleErr(t('admin.products.saleRule'));
       return;
     }
@@ -111,19 +147,20 @@ export default function ProductsAdmin() {
     setSaving(true);
     setError('');
     // NOTE: slug is NEVER sent — server generates it once on creation.
-    // NOTE: salePrice null clears the offer (server treats null/'' as no offer).
+    // Optional numbers are included ONLY when packOpt says send (value or
+    // deliberate-clear null); otherwise the key is omitted entirely.
     const body = {
       name: { ar: form.nameAr, en: form.nameEn },
       description: { ar: form.descAr, en: form.descEn },
       price: Number(form.price),
-      salePrice: sNum,
       category: form.category,
       stockStatus: form.stockStatus,
-      stockQty: Number(form.stockQty) || 0,
       isNewArrival: !!form.isNewArrival,
       images: form.images,
-      ...(form.ageMin === '' ? {} : { ageMin: Number(form.ageMin) }),
-      ...(form.ageMax === '' ? {} : { ageMax: Number(form.ageMax) }),
+      ...(sale.send ? { salePrice: sale.value } : {}),
+      ...(qty.send ? { stockQty: qty.value } : {}),
+      ...(ageMin.send ? { ageMin: ageMin.value } : {}),
+      ...(ageMax.send ? { ageMax: ageMax.value } : {}),
     };
     try {
       if (editing && editing._id) await api.put(`/products/${editing._id}`, body);

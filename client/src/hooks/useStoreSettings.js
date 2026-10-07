@@ -22,6 +22,13 @@ export function useStoreSettings() {
       setSettings(cached);
       return;
     }
+    // 8s grace: after that we stop waiting and the UI stays on locale
+    // fallbacks. The shared request itself is never aborted (other
+    // components may still be waiting on it).
+    let alive = true;
+    const timer = setTimeout(() => {
+      alive = false;
+    }, 8000);
     if (!inflight) {
       inflight = api
         .get('/settings')
@@ -35,8 +42,12 @@ export function useStoreSettings() {
         });
     }
     inflight.then((s) => {
-      if (s) setSettings(s);
+      if (alive && s) setSettings(s);
     });
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
   }, []);
 
   return settings;

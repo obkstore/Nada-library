@@ -10,10 +10,11 @@ import { developer } from '../config/developer';
 // fallback while loading). No tagline: StoreSettings has no tagline field.
 export default function Layout() {
   const { t, i18n } = useTranslation();
-  const shopName = useShopName();
-  const devName = lang === 'en' ? developer.name.en : developer.name.ar;
-  const hasLink = developer.url && developer.url !== 'no link';
   const { lang } = useParams();
+  const shopName = useShopName();
+  // Defensive: a broken/missing config must hide the credit, never crash render.
+  const devName = (lang === 'en' ? developer?.name?.en : developer?.name?.ar) || '';
+  const hasLink = !!developer?.url && developer.url !== 'no link';
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -75,17 +76,20 @@ export default function Layout() {
           {/* Mirrored arrow: points forward in both directions */}
           <span className="rtl:rotate-180 inline-block">→</span>
         </div>
-        {/* Developer credit: subtle, centered, wraps gracefully on narrow screens */}
-        <p className="px-4 pb-3 text-center text-xs text-stone-400">
-          {t('common.developedBy')}{' '}
-          {hasLink ? (
-            <a href={developer.url} target="_blank" rel="noopener noreferrer" className="font-bold hover:underline">
-              {devName}
-            </a>
-          ) : (
-            <span className="font-bold">{devName}</span>
-          )}
-        </p>
+        {/* Developer credit: subtle, centered, wraps gracefully on narrow screens.
+            Hidden entirely if the config yields no name. */}
+        {devName ? (
+          <p className="px-4 pb-3 text-center text-xs text-stone-400">
+            {t('common.developedBy')}{' '}
+            {hasLink ? (
+              <a href={developer.url} target="_blank" rel="noopener noreferrer" className="font-bold hover:underline">
+                {devName}
+              </a>
+            ) : (
+              <span className="font-bold">{devName}</span>
+            )}
+          </p>
+        ) : null}
       </footer>
     </div>
   );

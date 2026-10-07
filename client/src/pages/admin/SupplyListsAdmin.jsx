@@ -7,6 +7,18 @@ import { formatPrice } from '../../utils/formatPrice';
 import { effectivePrice } from '../../utils/prices';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 
+// Same packing rule as the product form: empty + was-empty → omit;
+// empty + had a value → explicit null (server $unsets); else Number().
+function packOpt(cur, init) {
+  const s = String(cur ?? '').trim();
+  if (s === '') {
+    const had = init !== '' && init !== null && init !== undefined;
+    return had ? { send: true, value: null } : { send: false };
+  }
+  const n = Number(s);
+  return { send: true, value: n };
+}
+
 // Supply-list builder: bilingual title/school/grade + product picker with
 // quantities. Grand total updates live from the picked products' prices.
 export default function SupplyListsAdmin() {
@@ -24,6 +36,7 @@ export default function SupplyListsAdmin() {
   const [gradeEn, setGradeEn] = useState('');
   const [active, setActive] = useState(true);
   const [bundle, setBundle] = useState('');
+  const [initialBundle, setInitialBundle] = useState('');
   const [featured, setFeatured] = useState(false);
   const [bundleErr, setBundleErr] = useState('');
   const [picked, setPicked] = useState([]); // [{ id, slug, name, price, salePrice, qty }]
@@ -75,7 +88,9 @@ export default function SupplyListsAdmin() {
     setGradeAr(l?.grade?.ar || ''); setGradeEn(l?.grade?.en || '');
     setActive(l ? !!l.isActive : true);
     // storedBundlePrice keeps the RAW value so a stale offer still shows for fixing.
-    setBundle(l && l.storedBundlePrice != null ? String(l.storedBundlePrice) : '');
+    const rawBundle = l && l.storedBundlePrice != null ? String(l.storedBundlePrice) : '';
+    setBundle(rawBundle);
+    setInitialBundle(rawBundle);
     setFeatured(l ? !!l.isFeatured : false);
     setBundleErr('');
     setPicked(
@@ -106,8 +121,14 @@ export default function SupplyListsAdmin() {
       setError(t('admin.lists.noItems'));
       return;
     }
+    // Pack the bundle: omit when empty+unchanged, null on deliberate clear.
+    const packed = packOpt(bundle, initialBundle);
+    if (packed.send && packed.value !== null && !Number.isFinite(packed.value)) {
+      setBundleErr(t('admin.lists.bundleRule', { total: fmt(total) }));
+      return;
+    }
+    const bNum = packed.send ? packed.value : null;
     // Offer rule mirror (server re-checks with live prices): bundle < regular total.
-    const bNum = bundle === '' ? null : Number(bundle);
     if (bNum != null && !(bNum > 0 && bNum < total)) {
       setBundleErr(t('admin.lists.bundleRule', { total: fmt(total) }));
       return;
@@ -125,7 +146,7 @@ export default function SupplyListsAdmin() {
       school: { ar: schoolAr, en: schoolEn },
       grade: { ar: gradeAr, en: gradeEn },
       items: picked.map((it) => ({ product: it.id, qty: Number(it.qty) || 1 })),
-      bundlePrice: bNum,
+      ...(packed.send ? { bundlePrice: packed.value } : {}),
       isFeatured: featured,
       isActive: active,
     };
