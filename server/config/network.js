@@ -18,7 +18,16 @@ if (process.env.ENABLE_CUSTOM_DNS === 'true') {
 
 // Force IPv4 at the driver level + fail each attempt after 10s (instead of
 // the driver's much longer default hang on black-holed VPN routes).
-const CONNECT_OPTS = { family: 4, serverSelectionTimeoutMS: 10000 };
+// maxPoolSize 5: small pool shared by the long-lived server AND reused across
+// serverless invocations (one pool per warm function instance).
+const CONNECT_OPTS = { family: 4, serverSelectionTimeoutMS: 10000, maxPoolSize: 5 };
+
+// True inside a serverless function runtime (Netlify runs on AWS Lambda).
+// AWS_LAMBDA_FUNCTION_NAME is primary (always set on Lambda); NETLIFY is the
+// secondary, Netlify-specific check.
+function isServerless() {
+  return Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY);
+}
 
 function getMongoUri() {
   const uri = process.env.MONGODB_URI;
@@ -79,4 +88,4 @@ function hintForCause(cause, host) {
   return 'Hint: see the full error message above.';
 }
 
-module.exports = { CONNECT_OPTS, getMongoUri, redactUri, uriHost, classifyDbError, hintForCause };
+module.exports = { CONNECT_OPTS, isServerless, getMongoUri, redactUri, uriHost, classifyDbError, hintForCause };

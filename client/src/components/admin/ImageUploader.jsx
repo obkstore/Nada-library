@@ -1,20 +1,23 @@
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../../api/client';
+import { processImage } from '../../utils/imageProcess';
 
 const ALLOWED = ['image/jpeg', 'image/png', 'image/webp'];
-const MAX_SIZE = 5 * 1024 * 1024;
+// Server cap is 4 MB; the preprocessor aims for <1 MB, so this is a backstop.
+const MAX_SIZE = 4 * 1024 * 1024;
 let nextId = 1;
 
-// Immediate per-file uploader: each selected file POSTs to /api/upload right
-// away (one request per file) with progress / error / retry states.
+// Immediate per-file uploader: each selected file is pre-processed in the
+// browser (resize/compress via imageProcess.js) and then POSTs to /api/upload
+// right away (one request per file) with progress / error / retry states.
 // Parent keeps only the returned URLs; first URL = main image. Removal only
 // drops the URL from state — server deletes the file after a successful save
 // (abandoned uploads are swept by scripts/cleanup-orphans.js).
 export default function ImageUploader({ images = [], onChange, single = false }) {
   const { t } = useTranslation();
   const inputRef = useRef(null);
-  const [pending, setPending] = useState([]); // [{ id, name, progress, error }]
+  const [pending, setPending] = useState([]); // [{ id, name, file?, progress, error, processing }]
 
   const startUpload = async (entry) => {
     setPending((p) => p.map((x) => (x.id === entry.id ? { ...x, progress: 0, error: '' } : x)));
@@ -37,20 +40,51 @@ export default function ImageUploader({ images = [], onChange, single = false })
     }
   };
 
-  const onSelect = (e) => {
+  // Runs preprocessing then upload for one entry. Shared by select + retry.
+  const processAndUpload = async (entry, file) => {
+    const done = await processImage(file);
+    if (done.error) {
+      setPending((p) => p.map((x) => (x.id === entry.id ? { ...x, processing: false, error: t('admin.products.uploadDecodeError') } : x)));
+      return;
+    }
+    if (done.file.size > MAX_SIZE) {
+      setPending((p) => p.map((x) => (x.id === entry.id ? { ...x, processing: false, error: t('admin.products.uploadSizeError') } : x)));
+      return;
+    }
+    entry.file = done.file;
+    setPending((p) => p.map((x) => (x.id === entry.id ? { ...x, processing: false } : x)));
+    await startUpload(entry);
+  };
+
+  const retryEntry = async (entry) => {
+    if (!entry.file && !entry.original) return;
+    setPending((p) => p.map((x) => (x.id === entry.id ? { ...x, error: '', processing: !x.file } : x)));
+    if (entry.file) await startUpload(entry);
+    else await processAndUpload(entry, entry.original);
+  };
+
+  const onSelect = async (e) => {
     const files = [...(e.target.files || [])];
     e.target.value = ''; // allow re-selecting the same file
-    const entries = [];
+    const jobs = [];
     for (const file of files) {
-      if (single && (images.length > 0 || entries.length > 0)) break;
-      const entry = { id: nextId++, file, name: file.name, progress: 0, error: '' };
-      if (!ALLOWED.includes(file.type)) entry.error = t('admin.products.uploadTypeError');
-      else if (file.size > MAX_SIZE) entry.error = t('admin.products.uploadSizeError');
-      entries.push(entry);
+      if (single && (images.length > 0 || jobs.length > 0)) break;
+      const entry = { id: nextId++, file: null, original: file, name: file.name, progress: 0, error: '', processing: true };
+      if (!ALLOWED.includes(file.type)) {
+        entry.error = t('admin.products.uploadTypeError');
+        entry.processing = false;
+      }
+      jobs.push({ entry, file });
     }
-    if (entries.length === 0) return;
-    setPending((p) => [...p, ...entries]);
-    entries.filter((x) => !x.error).forEach((x) => void startUpload(x));
+    if (jobs.length === 0) return;
+    setPending((p) => [...p, ...jobs.map((j) => j.entry)]);
+    // Pre-process each file (resize/compress), then upload the result.
+    // Sequential: keeps memory use flat for multi-selects.
+    for (const { entry, file } of jobs) {
+      if (entry.error) continue;
+      // eslint-disable-next-line no-await-in-loop
+      await processAndUpload(entry, file);
+    }
   };
 
   const move = (i, dir) => {
@@ -95,10 +129,12 @@ export default function ImageUploader({ images = [], onChange, single = false })
             {p.error ? (
               <>
                 <div className="text-[11px] text-red-600">{p.error}</div>
-                <button type="button" onClick={() => void startUpload(p)} className="text-xs font-bold text-brand-600">
+                <button type="button" onClick={() => void retryEntry(p)} className="text-xs font-bold text-brand-600">
                   {t('admin.common.retry')}
                 </button>
               </>
+            ) : p.processing ? (
+              <div className="text-[11px] text-stone-500">{t('admin.common.uploading')}</div>
             ) : (
               <>
                 <div className="h-1.5 rounded bg-stone-200 mt-1">

@@ -181,7 +181,8 @@
       "strippedNotice": "HTML tags were removed from: {{fields}}",
       "empty": "No products",
       "uploadTypeError": "Only jpg, png and webp images are allowed",
-      "uploadSizeError": "Image is larger than 5 MB",
+      "uploadSizeError": "Image is larger than 4 MB",
+      "uploadDecodeError": "Could not read this image file",
       "uploadFailed": "Image upload failed"
     },
     "categories": {

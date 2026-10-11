@@ -180,7 +180,8 @@
       "strippedNotice": "تمت إزالة وسوم HTML من: {{fields}}",
       "empty": "لا توجد منتجات",
       "uploadTypeError": "مسموح فقط بصور jpg و png و webp",
-      "uploadSizeError": "حجم الصورة أكبر من 5 ميغا",
+      "uploadSizeError": "حجم الصورة أكبر من 4 ميغا",
+      "uploadDecodeError": "تعذر قراءة ملف الصورة",
       "uploadFailed": "فشل رفع الصورة"
     },
     "categories": {

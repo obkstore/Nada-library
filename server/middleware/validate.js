@@ -29,7 +29,7 @@ function optNumber(field, { min, max, message }) {
 function errorHandler(err, req, res, next) { // eslint-disable-line no-unused-vars
   console.error(err);
   if (err.code === 'LIMIT_FILE_SIZE') {
-    return res.status(400).json({ message: 'Image too large (max 5 MB)' });
+    return res.status(400).json({ message: 'Image too large (max 4 MB)' });
   }
   if (err.message === 'Only jpg, png and webp images are allowed') {
     return res.status(400).json({ message: err.message });
