@@ -18,4 +18,8 @@ function initCloudinary() {
   return true;
 }
 
+// Auto-apply on import: every entry loads dotenv before requiring this
+// module, so env is ready here. Idempotent per process, cold-start safe.
+initCloudinary();
+
 module.exports = { cloudinary, cloudinaryConfigured, initCloudinary };
